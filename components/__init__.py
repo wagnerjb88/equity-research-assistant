@@ -1,0 +1,273 @@
+import streamlit as st
+import plotly.graph_objects as go
+import pandas as pd
+
+def display_company_overview(info):
+    """
+    Displays the company overview section: business description, key stats, leadership.
+    """
+    st.subheader(info.get("longName") or info.get("shortName") or info.get("symbol", "N/A"))
+    # --- Top row: quick stats ---
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("Market Cap", format_large_number(info.get("marketCap")))
+
+    with col2:
+        st.metric("Current Price", f"${info.get('currentPrice', 'N/A')}")
+
+    with col3:
+        st.metric("52W Range", f"${info.get('fiftyTwoWeekLow', 'N/A')} - ${info.get('fiftyTwoWeekHigh', 'N/A')}")
+
+    with col4:
+        st.metric("Beta", info.get("beta", "N/A"))
+
+    st.divider()
+
+    # --- Company details ---
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.write(f"**Sector:** {info.get('sector', 'N/A')}")
+        st.write(f"**Industry:** {info.get('industry', 'N/A')}")
+        st.write(f"**Employees:** {format_large_number(info.get('fullTimeEmployees'))}")
+        st.write(f"**CEO:** {get_ceo_name(info)}")
+
+    with col2:
+        st.write(f"**Exchange:** {info.get('exchange', 'N/A')}")
+        st.write(f"**Website:** {info.get('website', 'N/A')}")
+        st.write(f"**Avg Volume:** {format_large_number(info.get('averageVolume'))}")
+        st.write(f"**Shares Outstanding:** {format_large_number(info.get('sharesOutstanding'))}")
+
+    st.divider()
+
+    # --- Business summary ---
+    st.write("**Business Summary**")
+    st.write(info.get("longBusinessSummary", "No description available."))
+
+
+def format_large_number(num):
+    """
+    Formats large numbers into readable strings (e.g. 2500000000 -> '2.50B').
+    """
+    if num is None:
+        return "N/A"
+
+    if num >= 1_000_000_000:
+        return f"{num / 1_000_000_000:.2f}B"
+    elif num >= 1_000_000:
+        return f"{num / 1_000_000:.2f}M"
+    elif num >= 1_000:
+        return f"{num / 1_000:.2f}K"
+    else:
+        return str(num)
+
+
+def get_ceo_name(info):
+    """
+    Extracts the CEO's name from the company officers list, if available.
+    """
+    officers = info.get("companyOfficers", [])
+    for officer in officers:
+        title = officer.get("title", "")
+        if "CEO" in title or "Chief Executive" in title:
+            return officer.get("name", "N/A")
+    return "N/A"
+import plotly.graph_objects as go
+
+
+def display_price_chart(history, ticker):
+    """
+    Displays an interactive candlestick price chart using Plotly.
+    """
+    if history.empty:
+        st.warning("No price history available.")
+        return
+
+    fig = go.Figure(data=[
+        go.Candlestick(
+            x=history.index,
+            open=history["Open"],
+            high=history["High"],
+            low=history["Low"],
+            close=history["Close"],
+            name=ticker
+        )
+    ])
+
+    fig.update_layout(
+        title=f"{ticker} Price History",
+        xaxis_title="Date",
+        yaxis_title="Price ($)",
+        xaxis_rangeslider_visible=False,
+        template="plotly_dark",
+        height=500
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def format_financial_dataframe(df):
+    """
+    Formats a raw financial statement DataFrame for display:
+    - Converts column headers (dates) to readable strings
+    - Formats large numbers in millions
+    """
+    if df is None or df.empty:
+        return df
+
+    formatted = df.copy()
+
+    # Convert date columns to readable strings (e.g. "2024-09-30" -> "2024")
+    formatted.columns = [col.strftime("%Y-%m-%d") if hasattr(col, "strftime") else str(col) for col in formatted.columns]
+
+    # Convert all values to millions for readability
+    formatted = formatted / 1_000_000
+
+    return formatted
+
+
+def display_financial_statements(statements):
+    """
+    Displays income statement, balance sheet, and cash flow in tabs.
+    statements: dict with keys 'income_statement', 'balance_sheet', 'cash_flow'
+    """
+    tab1, tab2, tab3 = st.tabs(["Income Statement", "Balance Sheet", "Cash Flow"])
+
+    with tab1:
+        df = format_financial_dataframe(statements["income_statement"])
+        if df is not None and not df.empty:
+            st.caption("All figures in $ millions")
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.warning("No income statement data available.")
+
+    with tab2:
+        df = format_financial_dataframe(statements["balance_sheet"])
+        if df is not None and not df.empty:
+            st.caption("All figures in $ millions")
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.warning("No balance sheet data available.")
+
+    with tab3:
+        df = format_financial_dataframe(statements["cash_flow"])
+        if df is not None and not df.empty:
+            st.caption("All figures in $ millions")
+            st.dataframe(df, use_container_width=True)
+        else:
+            st.warning("No cash flow data available.")
+
+
+def display_key_metrics(metrics):
+    """
+    Displays key financial ratios/metrics grouped into sections.
+    metrics: dict of dicts, as returned by get_key_metrics()
+    """
+    st.write("**Valuation**")
+    display_metric_row(metrics["valuation"])
+
+    st.write("**Profitability**")
+    display_metric_row(metrics["profitability"], is_percent=True)
+
+    st.write("**Growth**")
+    display_metric_row(metrics["growth"], is_percent=True)
+
+    st.write("**Financial Health**")
+    display_metric_row(metrics["financial_health"])
+
+    st.write("**Cash Generation**")
+    display_cash_metrics(metrics["cash_generation"])
+
+
+def display_metric_row(metric_dict, is_percent=False):
+    """
+    Displays a dictionary of metrics as a row of columns.
+    """
+    cols = st.columns(len(metric_dict))
+
+    for col, (label, value) in zip(cols, metric_dict.items()):
+        with col:
+            if value is None:
+                display_value = "N/A"
+            elif is_percent:
+                display_value = f"{value * 100:.2f}%"
+            else:
+                display_value = f"{value:.2f}"
+            st.metric(label, display_value)
+
+
+def display_cash_metrics(cash_dict):
+    """
+    Displays FCF and FCF margin (special formatting: FCF in $ millions, margin as %).
+    """
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fcf = cash_dict.get("Free Cash Flow")
+        display_value = format_large_number(fcf) if fcf is not None else "N/A"
+        st.metric("Free Cash Flow", f"${display_value}" if fcf is not None else display_value)
+
+    with col2:
+        margin = cash_dict.get("FCF Margin")
+        display_value = f"{margin * 100:.2f}%" if margin is not None else "N/A"
+        st.metric("FCF Margin", display_value)
+        import pandas as pd
+
+
+def display_comparison_table(comparison_data, base_ticker):
+    """
+    Displays a side-by-side comparison table of companies.
+    comparison_data: list of dicts, as returned by get_comparison_data()
+    base_ticker: the main ticker being researched, highlighted in the table
+    """
+    if not comparison_data:
+        st.warning("No comparison data available. Check that the peer tickers are valid.")
+        return
+
+    df = pd.DataFrame(comparison_data)
+    df = df.set_index("Ticker")
+
+    # Format percentage columns
+    percent_cols = ["Gross Margin", "Operating Margin", "Net Margin", "ROE", "Revenue Growth"]
+    for col in percent_cols:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda x: f"{x * 100:.2f}%" if pd.notna(x) else "N/A")
+
+    # Format market cap
+    if "Market Cap" in df.columns:
+        df["Market Cap"] = df["Market Cap"].apply(lambda x: format_large_number(x) if pd.notna(x) else "N/A")
+
+    # Format remaining numeric columns to 2 decimals
+    numeric_cols = ["P/E (TTM)", "Forward P/E", "P/B", "EV/EBITDA", "Debt/Equity"]
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "N/A")
+
+    st.dataframe(df, use_container_width=True)
+
+    st.caption(f"**{base_ticker}** is your primary company being researched, compared against selected peers.")
+def display_score(score_result, explanations):
+    """
+    Displays the overall score and category breakdown with explanations.
+    """
+    overall = score_result["overall"]
+    categories = score_result["categories"]
+    method = score_result["method"]
+
+    st.write(f"**Overall Score: {overall if overall is not None else 'N/A'} / 100**")
+    st.caption(f"Scoring method: {method}")
+
+    st.divider()
+
+    cols = st.columns(4)
+    category_names = ["Valuation", "Profitability", "Growth", "Financial Health"]
+
+    for col, category in zip(cols, category_names):
+        with col:
+            score = categories.get(category)
+            st.metric(category, f"{score}/100" if score is not None else "N/A")
+
+            notes = explanations.get(category, [])
+            for note in notes:
+                st.caption(f"• {note}")
