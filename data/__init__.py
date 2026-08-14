@@ -854,3 +854,111 @@ def generate_dcf_excel(info, dcf_result, ticker):
     wb.save(buffer)
     buffer.seek(0)
     return buffer
+
+def generate_investment_thesis(info, score_result, dcf_result, comps_result, metrics, ticker):
+    """
+    Generates a plain-English investment thesis paragraph and a recommendation label,
+    based on the company's score and valuation signals.
+    """
+    company_name = info.get("longName") or info.get("shortName") or ticker
+    sector = info.get("sector", "its sector")
+    industry = info.get("industry", "")
+    overall_score = score_result["overall"] if score_result else None
+
+    # --- Gather upside signals from whichever valuation methods are available ---
+    upside_signals = []
+    if dcf_result is not None and dcf_result.get("upside_pct") is not None:
+        upside_signals.append(dcf_result["upside_pct"])
+    if comps_result is not None and comps_result.get("average_upside_pct") is not None:
+        upside_signals.append(comps_result["average_upside_pct"])
+
+    avg_upside = sum(upside_signals) / len(upside_signals) if upside_signals else None
+
+    # --- Determine recommendation label ---
+    if overall_score is not None and avg_upside is not None:
+        if overall_score >= 65 and avg_upside >= 10:
+            recommendation = "Attractive"
+        elif overall_score <= 40 or avg_upside <= -15:
+            recommendation = "Unattractive"
+        else:
+            recommendation = "Neutral / Hold"
+    elif overall_score is not None:
+        recommendation = "Attractive" if overall_score >= 65 else "Unattractive" if overall_score <= 40 else "Neutral / Hold"
+    else:
+        recommendation = "Insufficient Data"
+
+    sentences = []
+
+    # --- Opening: company + sector context ---
+    industry_str = f" within the {industry} industry" if industry else ""
+    sentences.append(f"{company_name} ({ticker}) operates in the {sector} sector{industry_str}.")
+
+    # --- Overall score ---
+    if overall_score is not None:
+        quality_desc = "strong" if overall_score >= 65 else "weak" if overall_score <= 40 else "mixed"
+        sentences.append(f"The company scores {overall_score}/100 overall on our composite framework, reflecting {quality_desc} fundamentals across valuation, profitability, growth, and financial health.")
+    else:
+        sentences.append("Insufficient data was available to generate a composite fundamental score.")
+
+    # --- Category strengths/weaknesses with specifics ---
+    if score_result is not None:
+        categories = score_result["categories"]
+        valid_categories = {k: v for k, v in categories.items() if v is not None}
+        if valid_categories:
+            strongest = max(valid_categories, key=valid_categories.get)
+            weakest = min(valid_categories, key=valid_categories.get)
+            if strongest != weakest:
+                sentences.append(f"{strongest} is the standout category at {categories[strongest]}/100, while {weakest} lags at {categories[weakest]}/100 and represents the primary area of concern.")
+
+    # --- Profitability/growth specifics, pulled from metrics if available ---
+    if metrics is not None:
+        prof = metrics.get("profitability", {})
+        growth = metrics.get("growth", {})
+        health = metrics.get("financial_health", {})
+
+        detail_notes = []
+        net_margin = prof.get("Net Margin")
+        if net_margin is not None:
+            detail_notes.append(f"a net margin of {net_margin*100:.1f}%")
+        rev_growth = growth.get("Revenue Growth (YoY)")
+        if rev_growth is not None:
+            detail_notes.append(f"YoY revenue growth of {rev_growth*100:.1f}%")
+        debt_equity = health.get("Debt/Equity")
+        if debt_equity is not None:
+            leverage_desc = "elevated" if debt_equity > 150 else "conservative" if debt_equity < 50 else "moderate"
+            detail_notes.append(f"{leverage_desc} leverage (D/E of {debt_equity:.0f})")
+
+        if detail_notes:
+            detail_str = ", ".join(detail_notes[:-1]) + (f", and {detail_notes[-1]}" if len(detail_notes) > 1 else detail_notes[0])
+            sentences.append(f"On the fundamentals, the company reports {detail_str}.")
+
+    # --- Valuation methodology and conclusion ---
+    methods_used = []
+    if dcf_result is not None and dcf_result.get("upside_pct") is not None:
+        methods_used.append(f"a DCF model implies {dcf_result['upside_pct']:+.1f}% {'upside' if dcf_result['upside_pct'] > 0 else 'downside'} (${dcf_result['implied_price']:.2f} implied vs. ${dcf_result['current_price']:.2f} current)")
+    if comps_result is not None and comps_result.get("average_upside_pct") is not None:
+        methods_used.append(f"comparable company analysis implies {comps_result['average_upside_pct']:+.1f}% {'upside' if comps_result['average_upside_pct'] > 0 else 'downside'} (${comps_result['average_implied_price']:.2f} implied)")
+
+    if methods_used:
+        methods_str = " and ".join(methods_used)
+        sentences.append(f"On valuation, {methods_str}.")
+    else:
+        sentences.append("No valuation estimate could be calculated — peer tickers and/or sufficient cash flow data are required for DCF and comps analysis.")
+
+    # --- Closing recommendation sentence ---
+    closing = {
+        "Attractive": f"Taken together, {ticker} screens as an attractive investment candidate warranting further diligence.",
+        "Neutral / Hold": f"Taken together, {ticker} presents a balanced risk/reward profile without a clear directional edge at current levels.",
+        "Unattractive": f"Taken together, {ticker} screens as unattractive at current levels given weak fundamentals and/or limited valuation upside.",
+        "Insufficient Data": f"Additional data is needed before forming a complete view on {ticker}.",
+    }
+    sentences.append(closing.get(recommendation, ""))
+
+    thesis_paragraph = " ".join(s for s in sentences if s)
+
+    return {
+        "recommendation": recommendation,
+        "thesis_paragraph": thesis_paragraph,
+        "overall_score": overall_score,
+        "avg_upside_pct": round(avg_upside, 1) if avg_upside is not None else None,
+    }

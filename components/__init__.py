@@ -409,3 +409,19 @@ def display_dcf_valuation(dcf_result):
     st.write(f"- Discounted Terminal Value: **${dcf_result['discounted_terminal_value']:,.0f}**")
     st.write(f"- Enterprise Value: **${dcf_result['enterprise_value']:,.0f}**")
     st.write(f"- Equity Value: **${dcf_result['equity_value']:,.0f}**")
+def display_investment_thesis(thesis_result):
+    """
+    Displays the auto-generated investment thesis and recommendation.
+    """
+    recommendation = thesis_result["recommendation"]
+
+    rec_colors = {
+        "Attractive": "🟢",
+        "Neutral / Hold": "🟡",
+        "Unattractive": "🔴",
+        "Insufficient Data": "⚪",
+    }
+    icon = rec_colors.get(recommendation, "⚪")
+
+    st.write(f"### {icon} Recommendation: {recommendation}")
+    st.write(thesis_result["thesis_paragraph"])

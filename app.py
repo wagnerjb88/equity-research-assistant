@@ -1,8 +1,8 @@
 import streamlit as st
 
 from config.settings import APP_NAME, APP_ICON, LAYOUT, DEFAULT_TICKER
-from data import get_stock_data, get_price_history, get_financial_statements, get_key_metrics, get_comparison_data, calculate_score, generate_score_explanation, calculate_comps_valuation, calculate_dcf, generate_dcf_excel
-from components import display_company_overview, display_price_chart, display_financial_statements, display_key_metrics, display_comparison_table, display_score, display_comps_valuation, display_dcf_valuation
+from data import get_stock_data, get_price_history, get_financial_statements, get_key_metrics, get_comparison_data, calculate_score, generate_score_explanation, calculate_comps_valuation, calculate_dcf, generate_dcf_excel, generate_investment_thesis
+from components import display_company_overview, display_price_chart, display_financial_statements, display_key_metrics, display_comparison_table, display_score, display_comps_valuation, display_dcf_valuation, display_investment_thesis
 st.set_page_config(
     page_title=APP_NAME,
     page_icon=APP_ICON,
@@ -161,12 +161,19 @@ if ticker_input:
                     )
             st.divider()
 
-            # --- Company Score ---
+           # --- Company Score ---
             st.subheader("Company Score")
             company_sector = info.get("sector")
             score_result = calculate_score(metrics, comparison_data=comparison_data, base_ticker=ticker_input, sector=company_sector)
             explanations = generate_score_explanation(metrics, score_result)
             display_score(score_result, explanations)
+
+            st.divider()
+
+            # --- Investment Thesis ---
+            st.subheader("Investment Thesis")
+            thesis_result = generate_investment_thesis(info, score_result, dcf_result, comps_result, metrics, ticker_input)
+            display_investment_thesis(thesis_result)
     except Exception as e:
         st.error(f"Error fetching data: {e}")
 else:
