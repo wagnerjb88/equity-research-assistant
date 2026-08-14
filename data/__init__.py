@@ -1,5 +1,9 @@
 import yfinance as yf
 import pandas as pd
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
+from io import BytesIO
 
 def get_stock_data(ticker):
     """
@@ -642,3 +646,211 @@ def calculate_dcf(info, stock, growth_rate=None, discount_rate=None, terminal_gr
         "current_price": current_price,
         "upside_pct": upside_pct,
     }
+def generate_dcf_excel(info, dcf_result, ticker):
+    """
+    Builds a downloadable Excel DCF model with live formulas (not hardcoded values),
+    so the user can adjust assumptions directly in Excel and see it recalculate.
+    Returns an in-memory BytesIO buffer containing the .xlsx file.
+    """
+    company_name = info.get("longName") or info.get("shortName") or ticker
+    shares_outstanding = info.get("sharesOutstanding")
+    total_debt = info.get("totalDebt") or 0
+    cash = info.get("totalCash") or 0
+    current_price = info.get("currentPrice")
+
+    a = dcf_result["assumptions"]
+    starting_fcf = dcf_result["starting_fcf"]
+    growth_rate = a["growth_rate"] / 100
+    discount_rate = a["discount_rate"] / 100
+    terminal_growth = a["terminal_growth"] / 100
+    projection_years = a["projection_years"]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "DCF Model"
+
+    BOLD = Font(bold=True)
+    BOLD_BLUE = Font(bold=True, color="0000FF")
+    HEADER_FILL = PatternFill(start_color="1F2937", end_color="1F2937", fill_type="solid")
+    HEADER_FONT = Font(bold=True, color="FFFFFF")
+    YELLOW_FILL = PatternFill(start_color="FFFF00", end_color="FFFF00", fill_type="solid")
+    GREEN_FILL = PatternFill(start_color="D1FAE5", end_color="D1FAE5", fill_type="solid")
+    CURRENCY_FMT = '$#,##0;($#,##0);"-"'
+    PERCENT_FMT = '0.0%'
+    PRICE_FMT = '$#,##0.00'
+
+    # --- Title ---
+    ws["B2"] = f"{company_name} ({ticker}) — DCF Valuation Model"
+    ws["B2"].font = Font(bold=True, size=14)
+    ws.merge_cells("B2:G2")
+
+    ws["B3"] = "All dollar figures in USD unless noted. Blue cells are editable inputs."
+    ws["B3"].font = Font(italic=True, size=9, color="666666")
+    ws.merge_cells("B3:G3")
+
+    # --- Assumptions block ---
+    ws["B5"] = "Key Assumptions"
+    ws["B5"].fill = HEADER_FILL
+    ws["B5"].font = HEADER_FONT
+    ws.merge_cells("B5:C5")
+
+    assumptions_list = [
+        ("Starting Free Cash Flow ($)", starting_fcf, CURRENCY_FMT),
+        ("FCF Growth Rate (Yr 1-5)", growth_rate, PERCENT_FMT),
+        ("Discount Rate (WACC/CAPM)", discount_rate, PERCENT_FMT),
+        ("Terminal Growth Rate", terminal_growth, PERCENT_FMT),
+        ("Shares Outstanding", shares_outstanding, '#,##0'),
+        ("Total Debt ($)", total_debt, CURRENCY_FMT),
+        ("Cash & Equivalents ($)", cash, CURRENCY_FMT),
+        ("Current Share Price ($)", current_price, PRICE_FMT),
+    ]
+
+    row = 6
+    for label, value, fmt in assumptions_list:
+        ws[f"B{row}"] = label
+        ws[f"C{row}"] = value
+        ws[f"C{row}"].font = BOLD_BLUE
+        ws[f"C{row}"].fill = YELLOW_FILL
+        ws[f"C{row}"].number_format = fmt
+        row += 1
+
+    CELL_START_FCF = "$C$6"
+    CELL_GROWTH = "$C$7"
+    CELL_DISCOUNT = "$C$8"
+    CELL_TERMINAL_GROWTH = "$C$9"
+    CELL_SHARES = "$C$10"
+    CELL_DEBT = "$C$11"
+    CELL_CASH = "$C$12"
+    CELL_PRICE = "$C$13"
+
+    # --- Projection table ---
+    proj_header_row = row + 2
+    ws[f"B{proj_header_row}"] = "Free Cash Flow Projection"
+    ws[f"B{proj_header_row}"].fill = HEADER_FILL
+    ws[f"B{proj_header_row}"].font = HEADER_FONT
+    ws.merge_cells(f"B{proj_header_row}:G{proj_header_row}")
+
+    col_header_row = proj_header_row + 1
+    headers = ["", "Year 1", "Year 2", "Year 3", "Year 4", "Year 5"]
+    for i, h in enumerate(headers):
+        col = get_column_letter(2 + i)
+        ws[f"{col}{col_header_row}"] = h
+        ws[f"{col}{col_header_row}"].font = BOLD
+
+    fcf_row = col_header_row + 1
+    ws[f"B{fcf_row}"] = "Projected FCF"
+    for i in range(projection_years):
+        col = get_column_letter(3 + i)
+        if i == 0:
+            formula = f"={CELL_START_FCF}*(1+{CELL_GROWTH})"
+        else:
+            prev_col = get_column_letter(3 + i - 1)
+            formula = f"={prev_col}{fcf_row}*(1+{CELL_GROWTH})"
+        ws[f"{col}{fcf_row}"] = formula
+        ws[f"{col}{fcf_row}"].number_format = CURRENCY_FMT
+
+    discount_factor_row = fcf_row + 1
+    ws[f"B{discount_factor_row}"] = "Discount Factor"
+    for i in range(projection_years):
+        col = get_column_letter(3 + i)
+        year_num = i + 1
+        ws[f"{col}{discount_factor_row}"] = f"=1/(1+{CELL_DISCOUNT})^{year_num}"
+        ws[f"{col}{discount_factor_row}"].number_format = '0.000'
+
+    pv_fcf_row = discount_factor_row + 1
+    ws[f"B{pv_fcf_row}"] = "PV of FCF"
+    for i in range(projection_years):
+        col = get_column_letter(3 + i)
+        ws[f"{col}{pv_fcf_row}"] = f"={col}{fcf_row}*{col}{discount_factor_row}"
+        ws[f"{col}{pv_fcf_row}"].number_format = CURRENCY_FMT
+        ws[f"{col}{pv_fcf_row}"].font = BOLD
+
+    # --- Terminal Value ---
+    tv_row = pv_fcf_row + 2
+    ws[f"B{tv_row}"] = "Terminal Value (Gordon Growth)"
+    last_fcf_col = get_column_letter(2 + projection_years)
+    ws[f"C{tv_row}"] = f"={last_fcf_col}{fcf_row}*(1+{CELL_TERMINAL_GROWTH})/({CELL_DISCOUNT}-{CELL_TERMINAL_GROWTH})"
+    ws[f"C{tv_row}"].number_format = CURRENCY_FMT
+
+    pv_tv_row = tv_row + 1
+    ws[f"B{pv_tv_row}"] = "PV of Terminal Value"
+    last_discount_col = get_column_letter(2 + projection_years)
+    ws[f"C{pv_tv_row}"] = f"=C{tv_row}*{last_discount_col}{discount_factor_row}"
+    ws[f"C{pv_tv_row}"].number_format = CURRENCY_FMT
+    ws[f"C{pv_tv_row}"].font = BOLD
+
+    # --- Valuation Bridge ---
+    bridge_row = pv_tv_row + 2
+    ws[f"B{bridge_row}"] = "Valuation Bridge"
+    ws[f"B{bridge_row}"].fill = HEADER_FILL
+    ws[f"B{bridge_row}"].font = HEADER_FONT
+    ws.merge_cells(f"B{bridge_row}:C{bridge_row}")
+
+    sum_pv_row = bridge_row + 1
+    ws[f"B{sum_pv_row}"] = "Sum of PV of FCF (Yr 1-5)"
+    last_pv_col = get_column_letter(2 + projection_years)
+    ws[f"C{sum_pv_row}"] = f"=SUM(C{pv_fcf_row}:{last_pv_col}{pv_fcf_row})"
+    ws[f"C{sum_pv_row}"].number_format = CURRENCY_FMT
+
+    pv_tv_ref_row = sum_pv_row + 1
+    ws[f"B{pv_tv_ref_row}"] = "PV of Terminal Value"
+    ws[f"C{pv_tv_ref_row}"] = f"=C{pv_tv_row}"
+    ws[f"C{pv_tv_ref_row}"].number_format = CURRENCY_FMT
+
+    ev_row = pv_tv_ref_row + 1
+    ws[f"B{ev_row}"] = "Enterprise Value"
+    ws[f"C{ev_row}"] = f"=C{sum_pv_row}+C{pv_tv_ref_row}"
+    ws[f"C{ev_row}"].number_format = CURRENCY_FMT
+    ws[f"C{ev_row}"].font = BOLD
+
+    less_debt_row = ev_row + 1
+    ws[f"B{less_debt_row}"] = "Less: Total Debt"
+    ws[f"C{less_debt_row}"] = f"=-{CELL_DEBT}"
+    ws[f"C{less_debt_row}"].number_format = CURRENCY_FMT
+
+    plus_cash_row = less_debt_row + 1
+    ws[f"B{plus_cash_row}"] = "Plus: Cash & Equivalents"
+    ws[f"C{plus_cash_row}"] = f"={CELL_CASH}"
+    ws[f"C{plus_cash_row}"].number_format = CURRENCY_FMT
+
+    equity_value_row = plus_cash_row + 1
+    ws[f"B{equity_value_row}"] = "Equity Value"
+    ws[f"C{equity_value_row}"] = f"=C{ev_row}+C{less_debt_row}+C{plus_cash_row}"
+    ws[f"C{equity_value_row}"].number_format = CURRENCY_FMT
+    ws[f"C{equity_value_row}"].font = BOLD
+
+    shares_row = equity_value_row + 1
+    ws[f"B{shares_row}"] = "Shares Outstanding"
+    ws[f"C{shares_row}"] = f"={CELL_SHARES}"
+    ws[f"C{shares_row}"].number_format = '#,##0'
+
+    implied_price_row = shares_row + 1
+    ws[f"B{implied_price_row}"] = "Implied Price per Share"
+    ws[f"C{implied_price_row}"] = f"=C{equity_value_row}/C{shares_row}"
+    ws[f"C{implied_price_row}"].number_format = PRICE_FMT
+    ws[f"C{implied_price_row}"].font = Font(bold=True, size=12)
+    ws[f"C{implied_price_row}"].fill = GREEN_FILL
+
+    current_price_row = implied_price_row + 1
+    ws[f"B{current_price_row}"] = "Current Share Price"
+    ws[f"C{current_price_row}"] = f"={CELL_PRICE}"
+    ws[f"C{current_price_row}"].number_format = PRICE_FMT
+
+    upside_row = current_price_row + 1
+    ws[f"B{upside_row}"] = "Implied Upside / (Downside)"
+    ws[f"C{upside_row}"] = f"=(C{implied_price_row}-C{current_price_row})/C{current_price_row}"
+    ws[f"C{upside_row}"].number_format = PERCENT_FMT
+    ws[f"C{upside_row}"].font = BOLD
+
+    # --- Column widths ---
+    ws.column_dimensions["A"].width = 3
+    ws.column_dimensions["B"].width = 30
+    ws.column_dimensions["C"].width = 20
+    for col in ["D", "E", "F", "G"]:
+        ws.column_dimensions[col].width = 16
+
+    # --- Save to in-memory buffer instead of disk ---
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer

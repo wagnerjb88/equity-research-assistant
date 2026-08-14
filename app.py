@@ -1,7 +1,7 @@
 import streamlit as st
 
 from config.settings import APP_NAME, APP_ICON, LAYOUT, DEFAULT_TICKER
-from data import get_stock_data, get_price_history, get_financial_statements, get_key_metrics, get_comparison_data, calculate_score, generate_score_explanation, calculate_comps_valuation, calculate_dcf
+from data import get_stock_data, get_price_history, get_financial_statements, get_key_metrics, get_comparison_data, calculate_score, generate_score_explanation, calculate_comps_valuation, calculate_dcf, generate_dcf_excel
 from components import display_company_overview, display_price_chart, display_financial_statements, display_key_metrics, display_comparison_table, display_score, display_comps_valuation, display_dcf_valuation
 st.set_page_config(
     page_title=APP_NAME,
@@ -150,6 +150,15 @@ if ticker_input:
                 st.divider()
                 display_dcf_valuation(dcf_result)
 
+                if dcf_result is not None:
+                    excel_buffer = generate_dcf_excel(info, dcf_result, ticker_input)
+                    st.download_button(
+                        label="📥 Download DCF Model (Excel)",
+                        data=excel_buffer,
+                        file_name=f"{ticker_input}_DCF_Model.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="dcf_excel_download"
+                    )
             st.divider()
 
             # --- Company Score ---
