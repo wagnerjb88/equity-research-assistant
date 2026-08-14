@@ -407,3 +407,150 @@ def generate_score_explanation(metrics, score_result):
     explanations["Financial Health"] = notes
 
     return explanations
+def calculate_comps_valuation(info, comparison_data):
+    """
+    Estimates fair value using peer median valuation multiples (P/E, EV/EBITDA, P/S, P/B)
+    applied to the company's own financials.
+    Returns implied prices per method, plus per-peer multiple detail for transparency.
+    """
+    if not comparison_data or len(comparison_data) < 2:
+        return None
+
+    peer_df = pd.DataFrame(comparison_data).set_index("Ticker")
+    base_ticker = info.get("symbol")
+
+    if base_ticker not in peer_df.index:
+        return None
+
+    peers_only = peer_df.drop(index=base_ticker, errors="ignore")
+
+    current_price = info.get("currentPrice")
+    shares_outstanding = info.get("sharesOutstanding")
+    eps = info.get("trailingEps")
+    ebitda = info.get("ebitda")
+    total_debt = info.get("totalDebt") or 0
+    cash = info.get("totalCash") or 0
+    revenue_per_share = info.get("totalRevenue") / shares_outstanding if info.get("totalRevenue") and shares_outstanding else None
+    book_value_per_share = info.get("bookValue")
+
+    results = {}
+
+    def clean_multiples(series):
+        """Drops missing and negative/extreme multiples that would distort the median."""
+        return series.dropna()[(series > 0) & (series < 200)]
+
+    # --- P/E Method ---
+    pe_values = clean_multiples(peers_only["P/E (TTM)"])
+    if not pe_values.empty and eps is not None and eps > 0:
+        median_pe = pe_values.median()
+        implied_price = median_pe * eps
+        results["P/E"] = {
+            "peer_median_multiple": round(median_pe, 2),
+            "peer_multiples": pe_values.round(2).to_dict(),
+            "implied_price": round(implied_price, 2),
+        }
+
+    # --- EV/EBITDA Method ---
+    ev_ebitda_values = clean_multiples(peers_only["EV/EBITDA"])
+    if not ev_ebitda_values.empty and ebitda is not None and ebitda > 0 and shares_outstanding:
+        median_ev_ebitda = ev_ebitda_values.median()
+        implied_ev = median_ev_ebitda * ebitda
+        implied_equity_value = implied_ev - total_debt + cash
+        implied_price = implied_equity_value / shares_outstanding
+        results["EV/EBITDA"] = {
+            "peer_median_multiple": round(median_ev_ebitda, 2),
+            "peer_multiples": ev_ebitda_values.round(2).to_dict(),
+            "implied_price": round(implied_price, 2),
+        }
+
+    # --- P/S Method ---
+    if "P/S" in peers_only.columns:
+        ps_values = clean_multiples(peers_only["P/S"])
+    else:
+        ps_values = pd.Series(dtype=float)
+    if not ps_values.empty and revenue_per_share is not None and revenue_per_share > 0:
+        median_ps = ps_values.median()
+        implied_price = median_ps * revenue_per_share
+        results["P/S"] = {
+            "peer_median_multiple": round(median_ps, 2),
+            "peer_multiples": ps_values.round(2).to_dict(),
+            "implied_price": round(implied_price, 2),
+        }
+
+    # --- P/B Method ---
+    if "P/B" in peers_only.columns:
+        pb_values = clean_multiples(peers_only["P/B"])
+    else:
+        pb_values = pd.Series(dtype=float)
+    if not pb_values.empty and book_value_per_share is not None and book_value_per_share > 0:
+        median_pb = pb_values.median()
+        implied_price = median_pb * book_value_per_share
+        results["P/B"] = {
+            "peer_median_multiple": round(median_pb, 2),
+            "peer_multiples": pb_values.round(2).to_dict(),
+            "implied_price": round(implied_price, 2),
+        }
+
+    if not results:
+        return None
+
+    implied_prices = [r["implied_price"] for r in results.values()]
+    low = min(implied_prices)
+    high = max(implied_prices)
+    avg_price = sum(implied_prices) / len(implied_prices)
+
+    return {
+        "methods": results,
+        "low": round(low, 2),
+        "high": round(high, 2),
+        "average_implied_price": round(avg_price, 2),
+        "current_price": current_price,
+        "average_upside_pct": round((avg_price - current_price) / current_price * 100, 1) if current_price else None,
+    }
+
+    # Exclude the base company from the peer average
+    peers_only = peer_df.drop(index=base_ticker, errors="ignore")
+
+    current_price = info.get("currentPrice")
+    shares_outstanding = info.get("sharesOutstanding")
+    eps = info.get("trailingEps")
+    ebitda = info.get("ebitda")
+    total_debt = info.get("totalDebt") or 0
+    cash = info.get("totalCash") or 0
+
+    results = {}
+
+    # --- P/E-based valuation ---
+    peer_pe_avg = peers_only["P/E (TTM)"].dropna().mean()
+    if pd.notna(peer_pe_avg) and eps is not None and eps > 0:
+        implied_price_pe = peer_pe_avg * eps
+        results["P/E Method"] = {
+            "peer_avg_multiple": round(peer_pe_avg, 2),
+            "implied_price": round(implied_price_pe, 2),
+            "upside_pct": round((implied_price_pe - current_price) / current_price * 100, 1) if current_price else None
+        }
+
+    # --- EV/EBITDA-based valuation ---
+    peer_ev_ebitda_avg = peers_only["EV/EBITDA"].dropna().mean()
+    if pd.notna(peer_ev_ebitda_avg) and ebitda is not None and ebitda > 0 and shares_outstanding:
+        implied_ev = peer_ev_ebitda_avg * ebitda
+        implied_equity_value = implied_ev - total_debt + cash
+        implied_price_ev = implied_equity_value / shares_outstanding
+        results["EV/EBITDA Method"] = {
+            "peer_avg_multiple": round(peer_ev_ebitda_avg, 2),
+            "implied_price": round(implied_price_ev, 2),
+            "upside_pct": round((implied_price_ev - current_price) / current_price * 100, 1) if current_price else None
+        }
+
+    if not results:
+        return None
+
+    # Average across whichever methods produced a result
+    avg_implied_price = sum(r["implied_price"] for r in results.values()) / len(results)
+
+    return {
+        "methods": results,
+        "average_implied_price": round(avg_implied_price, 2),
+        "current_price": current_price,
+        "average_upside_pct": round((avg_implied_price - current_price) / current_price * 100, 1) if current_price else None
+    }

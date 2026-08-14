@@ -271,3 +271,89 @@ def display_score(score_result, explanations):
             notes = explanations.get(category, [])
             for note in notes:
                 st.caption(f"• {note}")
+
+def display_comps_valuation(comps_result):
+    """
+    Displays comps-based valuation: implied price range, per-method breakdown,
+    and per-peer multiple detail.
+    """
+    if comps_result is None:
+        st.info("Enter at least one peer ticker above to run a comps valuation.")
+        return
+
+    current_price = comps_result["current_price"]
+    avg_price = comps_result["average_implied_price"]
+    avg_upside = comps_result["average_upside_pct"]
+    low = comps_result["low"]
+    high = comps_result["high"]
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Current Price", f"${current_price:.2f}" if current_price else "N/A")
+    with col2:
+        st.metric("Implied Range", f"${low:.2f} - ${high:.2f}")
+    with col3:
+        st.metric("Avg. Implied Price", f"${avg_price:.2f}")
+    with col4:
+        if avg_upside is not None:
+            st.metric("Avg. Upside/Downside", f"{avg_upside:+.1f}%")
+
+    st.divider()
+
+    # --- Football field chart ---
+    display_football_field(comps_result, current_price)
+
+    st.divider()
+
+    # --- Per-method breakdown with peer detail ---
+    st.write("**By Method**")
+    for method_name, method_data in comps_result["methods"].items():
+        implied = method_data["implied_price"]
+        upside = round((implied - current_price) / current_price * 100, 1) if current_price else None
+        upside_str = f" ({upside:+.1f}%)" if upside is not None else ""
+
+        st.write(f"**{method_name}** — Peer median: {method_data['peer_median_multiple']}x → Implied price: ${implied:.2f}{upside_str}")
+
+        peer_multiples = method_data["peer_multiples"]
+        multiples_str = "  |  ".join([f"{ticker}: {mult}x" for ticker, mult in peer_multiples.items()])
+        st.caption(multiples_str)
+
+
+def display_football_field(comps_result, current_price):
+    """
+    Displays a horizontal 'football field' style bar chart showing the implied
+    price range from each valuation method, plus the current price as a reference line.
+    """
+    methods = list(comps_result["methods"].keys())
+    prices = [comps_result["methods"][m]["implied_price"] for m in methods]
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        x=prices,
+        y=methods,
+        orientation="h",
+        marker=dict(color="#3b82f6"),
+        text=[f"${p:.2f}" for p in prices],
+        textposition="outside",
+    ))
+
+    if current_price:
+        fig.add_vline(
+            x=current_price,
+            line_dash="dash",
+            line_color="red",
+            annotation_text=f"Current: ${current_price:.2f}",
+            annotation_position="top",
+        )
+
+    fig.update_layout(
+        title="Implied Price by Valuation Method",
+        xaxis_title="Implied Price ($)",
+        template="plotly_dark",
+        height=300,
+        showlegend=False,
+        margin=dict(l=10, r=10, t=40, b=10),
+    )
+
+    st.plotly_chart(fig, use_container_width=True)

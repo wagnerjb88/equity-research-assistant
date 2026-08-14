@@ -1,9 +1,8 @@
 import streamlit as st
 
 from config.settings import APP_NAME, APP_ICON, LAYOUT, DEFAULT_TICKER
-from data import get_stock_data, get_price_history, get_financial_statements, get_key_metrics, get_comparison_data, calculate_score, generate_score_explanation
-from components import display_company_overview, display_price_chart, display_financial_statements, display_key_metrics, display_comparison_table, display_score
-
+from data import get_stock_data, get_price_history, get_financial_statements, get_key_metrics, get_comparison_data, calculate_score, generate_score_explanation, calculate_comps_valuation
+from components import display_company_overview, display_price_chart, display_financial_statements, display_key_metrics, display_comparison_table, display_score, display_comps_valuation
 st.set_page_config(
     page_title=APP_NAME,
     page_icon=APP_ICON,
@@ -94,6 +93,13 @@ if ticker_input:
             else:
                 comparison_data = None
                 st.info("Enter peer tickers above to compare against.")
+
+            st.divider()
+
+            # --- Comps Valuation ---
+            st.subheader("Comparable Company Valuation")
+            comps_result = calculate_comps_valuation(info, comparison_data)
+            display_comps_valuation(comps_result)
 
             st.divider()
 
