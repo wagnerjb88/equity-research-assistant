@@ -964,7 +964,7 @@ def generate_investment_thesis(info, score_result, dcf_result, comps_result, met
         "overall_score": overall_score,
         "avg_upside_pct": round(avg_upside, 1) if avg_upside is not None else None,
     }
-def assemble_pitch_data(info, metrics, score_result, dcf_result, comps_result, thesis_result, ticker):
+def assemble_pitch_data(info, metrics, score_result, dcf_result, comps_result, thesis_result, news_articles, ticker):
     """
     Gathers everything needed for the investment memo into one clean dictionary,
     so both the in-app display and the Word export pull from the same source.
@@ -987,7 +987,9 @@ def assemble_pitch_data(info, metrics, score_result, dcf_result, comps_result, t
         "metrics": metrics,
         "risks": risks_catalysts["risks"],
         "catalysts": risks_catalysts["catalysts"],
+        "news": news_articles,
     }
+
 def generate_risks_and_catalysts(metrics, score_result, info):
     """
     Auto-generates a list of risk factors and catalysts based on weak/strong
@@ -1194,6 +1196,19 @@ def generate_pitch_docx(pitch_data):
 
         doc.add_paragraph()
 
+    # --- Recent News ---
+    doc.add_heading("Recent News", level=2)
+    if pitch_data["news"]:
+        for article in pitch_data["news"]:
+            news_para = doc.add_paragraph(style="List Bullet")
+            title_run = news_para.add_run(article["title"])
+            title_run.bold = True
+            news_para.add_run(f"  ({article['publisher']}, {article['published']})")
+    else:
+        doc.add_paragraph("No recent news articles available.")
+
+    doc.add_paragraph()
+
     # --- Business Summary ---
     doc.add_heading("Business Summary", level=2)
     doc.add_paragraph(pitch_data["business_summary"])
@@ -1203,3 +1218,46 @@ def generate_pitch_docx(pitch_data):
     doc.save(buffer)
     buffer.seek(0)
     return buffer
+def get_company_news(stock, limit=6):
+    """
+    Fetches recent news articles for a company using yfinance's built-in news feed.
+    Returns a list of dicts with title, publisher, link, and publish date.
+    """
+    try:
+        raw_news = stock.news
+    except Exception:
+        return []
+
+    if not raw_news:
+        return []
+
+    articles = []
+    for item in raw_news[:limit]:
+        # yfinance nests article data under a "content" key in recent versions,
+        # but older versions store fields at the top level — handle both.
+        content = item.get("content", item)
+
+        title = content.get("title")
+        if not title:
+            continue
+
+        publisher = None
+        if isinstance(content.get("provider"), dict):
+            publisher = content["provider"].get("displayName")
+        publisher = publisher or content.get("publisher") or "Unknown Source"
+
+        link = None
+        if isinstance(content.get("canonicalUrl"), dict):
+            link = content["canonicalUrl"].get("url")
+        link = link or content.get("link") or content.get("clickThroughUrl", {}).get("url") if isinstance(content.get("clickThroughUrl"), dict) else link
+
+        pub_date = content.get("pubDate") or content.get("providerPublishTime", "")
+
+        articles.append({
+            "title": title,
+            "publisher": publisher,
+            "link": link or "#",
+            "published": str(pub_date)[:10] if pub_date else "N/A",
+        })
+
+    return articles

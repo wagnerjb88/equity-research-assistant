@@ -489,5 +489,27 @@ def display_full_pitch(pitch_data):
             st.write(f"- **{method_name}**: Peer median {method_data['peer_median_multiple']}x → Implied price ${method_data['implied_price']:.2f}")
         st.divider()
 
+    st.write("### Recent News")
+    if pitch_data["news"]:
+        for article in pitch_data["news"]:
+            st.write(f"**[{article['title']}]({article['link']})**")
+            st.caption(f"{article['publisher']} • {article['published']}")
+    else:
+        st.write("No recent news articles available.")
+
+    st.divider()
+
     st.write("### Business Summary")
     st.write(pitch_data["business_summary"])
+
+def display_news(news_articles):
+    """
+    Displays recent news headlines as a clean list with links.
+    """
+    if not news_articles:
+        st.info("No recent news articles available for this ticker.")
+        return
+
+    for article in news_articles:
+        st.write(f"**[{article['title']}]({article['link']})**")
+        st.caption(f"{article['publisher']} • {article['published']}")
