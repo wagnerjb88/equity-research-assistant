@@ -1,8 +1,8 @@
 import streamlit as st
 
 from config.settings import APP_NAME, APP_ICON, LAYOUT, DEFAULT_TICKER
-from data import get_stock_data, get_price_history, get_financial_statements, get_key_metrics, get_comparison_data, calculate_score, generate_score_explanation, calculate_comps_valuation, calculate_dcf, generate_dcf_excel, generate_investment_thesis
-from components import display_company_overview, display_price_chart, display_financial_statements, display_key_metrics, display_comparison_table, display_score, display_comps_valuation, display_dcf_valuation, display_investment_thesis
+from data import get_stock_data, get_price_history, get_financial_statements, get_key_metrics, get_comparison_data, calculate_score, generate_score_explanation, calculate_comps_valuation, calculate_dcf, generate_dcf_excel, generate_investment_thesis, assemble_pitch_data, generate_pitch_docx
+from components import display_company_overview, display_price_chart, display_financial_statements, display_key_metrics, display_comparison_table, display_score, display_comps_valuation, display_dcf_valuation, display_investment_thesis, display_full_pitch
 st.set_page_config(
     page_title=APP_NAME,
     page_icon=APP_ICON,
@@ -170,10 +170,29 @@ if ticker_input:
 
             st.divider()
 
-            # --- Investment Thesis ---
+           # --- Investment Thesis ---
             st.subheader("Investment Thesis")
             thesis_result = generate_investment_thesis(info, score_result, dcf_result, comps_result, metrics, ticker_input)
             display_investment_thesis(thesis_result)
+
+            st.divider()
+
+            # --- Full Investment Memo ---
+            st.subheader("📄 Full Investment Memo")
+            with st.expander("View Full Memo", expanded=False):
+                pitch_data = assemble_pitch_data(info, metrics, score_result, dcf_result, comps_result, thesis_result, ticker_input)
+                display_full_pitch(pitch_data)
+
+                st.divider()
+
+                docx_buffer = generate_pitch_docx(pitch_data)
+                st.download_button(
+                    label="📥 Download Investment Memo (Word)",
+                    data=docx_buffer,
+                    file_name=f"{ticker_input}_Investment_Memo.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    key="pitch_docx_download"
+                )
     except Exception as e:
         st.error(f"Error fetching data: {e}")
 else:

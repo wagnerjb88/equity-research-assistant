@@ -425,3 +425,69 @@ def display_investment_thesis(thesis_result):
 
     st.write(f"### {icon} Recommendation: {recommendation}")
     st.write(thesis_result["thesis_paragraph"])
+
+def display_full_pitch(pitch_data):
+    """
+    Displays the complete investment memo in-app: header, thesis, valuation summary,
+    score breakdown, and key metrics — pulling entirely from the assembled pitch_data dict.
+    """
+    st.write(f"## {pitch_data['company_name']} ({pitch_data['ticker']})")
+    st.caption(f"{pitch_data['sector']} | {pitch_data['industry']}")
+
+    if pitch_data["thesis"]:
+        rec_colors = {"Attractive": "🟢", "Neutral / Hold": "🟡", "Unattractive": "🔴", "Insufficient Data": "⚪"}
+        icon = rec_colors.get(pitch_data["thesis"]["recommendation"], "⚪")
+        st.write(f"### {icon} {pitch_data['thesis']['recommendation']}")
+
+    st.divider()
+
+    st.write("### Investment Thesis")
+    if pitch_data["thesis"]:
+        st.write(pitch_data["thesis"]["thesis_paragraph"])
+
+    st.divider()
+
+    st.write("### Valuation Summary")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        cp = pitch_data["current_price"]
+        st.metric("Current Price", f"${cp:.2f}" if cp else "N/A")
+    with col2:
+        if pitch_data["dcf"]:
+            st.metric("DCF Implied Price", f"${pitch_data['dcf']['implied_price']:.2f}")
+        else:
+            st.metric("DCF Implied Price", "N/A")
+    with col3:
+        if pitch_data["comps"]:
+            st.metric("Comps Implied Price", f"${pitch_data['comps']['average_implied_price']:.2f}")
+        else:
+            st.metric("Comps Implied Price", "N/A")
+
+    st.divider()
+
+    st.write("### Company Score")
+    if pitch_data["score"]:
+        display_score(pitch_data["score"], {})
+
+    st.divider()
+
+    st.write("### Risks")
+    for risk in pitch_data["risks"]:
+        st.write(f"- {risk}")
+
+    st.divider()
+
+    st.write("### Catalysts")
+    for catalyst in pitch_data["catalysts"]:
+        st.write(f"- {catalyst}")
+
+    st.divider()
+
+    if pitch_data["comps"]:
+        st.write("### Comparable Company Analysis")
+        for method_name, method_data in pitch_data["comps"]["methods"].items():
+            st.write(f"- **{method_name}**: Peer median {method_data['peer_median_multiple']}x → Implied price ${method_data['implied_price']:.2f}")
+        st.divider()
+
+    st.write("### Business Summary")
+    st.write(pitch_data["business_summary"])

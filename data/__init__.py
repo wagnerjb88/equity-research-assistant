@@ -4,6 +4,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 from io import BytesIO
+from docx import Document
+from docx.shared import Pt, RGBColor
 
 def get_stock_data(ticker):
     """
@@ -962,3 +964,242 @@ def generate_investment_thesis(info, score_result, dcf_result, comps_result, met
         "overall_score": overall_score,
         "avg_upside_pct": round(avg_upside, 1) if avg_upside is not None else None,
     }
+def assemble_pitch_data(info, metrics, score_result, dcf_result, comps_result, thesis_result, ticker):
+    """
+    Gathers everything needed for the investment memo into one clean dictionary,
+    so both the in-app display and the Word export pull from the same source.
+    """
+    company_name = info.get("longName") or info.get("shortName") or ticker
+    risks_catalysts = generate_risks_and_catalysts(metrics, score_result, info)
+
+    return {
+        "ticker": ticker,
+        "company_name": company_name,
+        "sector": info.get("sector", "N/A"),
+        "industry": info.get("industry", "N/A"),
+        "current_price": info.get("currentPrice"),
+        "market_cap": info.get("marketCap"),
+        "business_summary": info.get("longBusinessSummary", "No description available."),
+        "thesis": thesis_result,
+        "score": score_result,
+        "dcf": dcf_result,
+        "comps": comps_result,
+        "metrics": metrics,
+        "risks": risks_catalysts["risks"],
+        "catalysts": risks_catalysts["catalysts"],
+    }
+def generate_risks_and_catalysts(metrics, score_result, info):
+    """
+    Auto-generates a list of risk factors and catalysts based on weak/strong
+    areas identified in the scoring and metrics data.
+    """
+    risks = []
+    catalysts = []
+
+    if metrics is not None:
+        health = metrics.get("financial_health", {})
+        growth = metrics.get("growth", {})
+        prof = metrics.get("profitability", {})
+        val = metrics.get("valuation", {})
+
+        debt_equity = health.get("Debt/Equity")
+        if debt_equity is not None and debt_equity > 150:
+            risks.append(f"Elevated leverage, with a Debt/Equity ratio of {debt_equity:.0f}, increases sensitivity to rising rates or earnings shortfalls.")
+        elif debt_equity is not None and debt_equity < 30:
+            catalysts.append(f"Conservative balance sheet (Debt/Equity of {debt_equity:.0f}) provides flexibility for buybacks, M&A, or reinvestment.")
+
+        current_ratio = health.get("Current Ratio")
+        if current_ratio is not None and current_ratio < 1:
+            risks.append(f"Current ratio of {current_ratio:.2f} is below 1.0, indicating potential short-term liquidity pressure.")
+
+        rev_growth = growth.get("Revenue Growth (YoY)")
+        if rev_growth is not None and rev_growth < 0:
+            risks.append(f"Revenue declined {abs(rev_growth)*100:.1f}% year-over-year, raising questions about demand or competitive positioning.")
+        elif rev_growth is not None and rev_growth > 0.15:
+            catalysts.append(f"Strong revenue growth of {rev_growth*100:.1f}% YoY signals healthy demand and potential for continued momentum.")
+
+        net_margin = prof.get("Net Margin")
+        if net_margin is not None and net_margin < 0.05:
+            risks.append(f"Thin net margin of {net_margin*100:.1f}% leaves limited cushion against cost inflation or pricing pressure.")
+        elif net_margin is not None and net_margin > 0.20:
+            catalysts.append(f"High net margin of {net_margin*100:.1f}% reflects pricing power and/or operational efficiency.")
+
+        pe = val.get("P/E (TTM)")
+        if pe is not None and pe > 40:
+            risks.append(f"Elevated P/E of {pe:.1f}x implies high growth expectations are already priced in, raising valuation risk if growth disappoints.")
+
+    if score_result is not None:
+        categories = score_result["categories"]
+        for category, score in categories.items():
+            if score is not None and score < 35:
+                risks.append(f"{category} scores notably weak ({score}/100) relative to peers or general benchmarks.")
+            elif score is not None and score >= 80:
+                catalysts.append(f"{category} scores notably strong ({score}/100), representing a clear competitive advantage.")
+
+    # --- General/macro risk (always included as a baseline consideration) ---
+    sector = info.get("sector") if info else None
+    if sector:
+        risks.append(f"Broader {sector} sector conditions (competitive dynamics, regulatory environment, macro sensitivity) could impact results independent of company-specific execution.")
+
+    if not risks:
+        risks.append("No significant company-specific risk flags were identified based on available data; standard market and execution risks still apply.")
+    if not catalysts:
+        catalysts.append("No standout catalysts were identified based on available data.")
+
+    return {"risks": risks, "catalysts": catalysts}
+def generate_pitch_docx(pitch_data):
+    """
+    Builds a downloadable Word investment memo from the assembled pitch data.
+    Returns an in-memory BytesIO buffer containing the .docx file.
+    """
+    doc = Document()
+
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(10.5)
+
+    # --- Header ---
+    doc.add_heading(f"{pitch_data['company_name']} ({pitch_data['ticker']})", level=1)
+    subtitle = doc.add_paragraph("Investment Memo")
+    subtitle.runs[0].italic = True
+    doc.add_paragraph(f"{pitch_data['sector']} | {pitch_data['industry']}")
+
+    # --- Recommendation ---
+    if pitch_data["thesis"]:
+        rec = pitch_data["thesis"]["recommendation"]
+        rec_colors = {
+            "Attractive": RGBColor(0, 128, 0),
+            "Neutral / Hold": RGBColor(180, 140, 0),
+            "Unattractive": RGBColor(200, 0, 0),
+            "Insufficient Data": RGBColor(100, 100, 100),
+        }
+        rec_para = doc.add_paragraph()
+        rec_run = rec_para.add_run(f"Recommendation: {rec}")
+        rec_run.bold = True
+        rec_run.font.size = Pt(13)
+        rec_run.font.color.rgb = rec_colors.get(rec, RGBColor(0, 0, 0))
+
+    doc.add_paragraph()
+
+    # --- Investment Thesis ---
+    doc.add_heading("Investment Thesis", level=2)
+    if pitch_data["thesis"]:
+        doc.add_paragraph(pitch_data["thesis"]["thesis_paragraph"])
+    else:
+        doc.add_paragraph("Insufficient data available to generate an investment thesis.")
+
+    # --- Valuation Summary ---
+    doc.add_heading("Valuation Summary", level=2)
+    val_table = doc.add_table(rows=1, cols=2)
+    val_table.style = "Light Grid Accent 1"
+    hdr = val_table.rows[0].cells
+    hdr[0].text = "Metric"
+    hdr[1].text = "Value"
+
+    current_price = pitch_data["current_price"]
+    val_rows = [("Current Price", f"${current_price:.2f}" if current_price else "N/A")]
+
+    if pitch_data["dcf"]:
+        val_rows.append(("DCF Implied Price", f"${pitch_data['dcf']['implied_price']:.2f}"))
+        val_rows.append(("DCF Upside/Downside", f"{pitch_data['dcf']['upside_pct']:+.1f}%"))
+    if pitch_data["comps"]:
+        val_rows.append(("Comps Implied Price", f"${pitch_data['comps']['average_implied_price']:.2f}"))
+        val_rows.append(("Comps Upside/Downside", f"{pitch_data['comps']['average_upside_pct']:+.1f}%"))
+
+    for label, value in val_rows:
+        row_cells = val_table.add_row().cells
+        row_cells[0].text = label
+        row_cells[1].text = value
+
+    doc.add_paragraph()
+
+    # --- Company Score ---
+    doc.add_heading("Company Score", level=2)
+    if pitch_data["score"]:
+        overall = pitch_data["score"]["overall"]
+        doc.add_paragraph(f"Overall Score: {overall}/100" if overall is not None else "Overall Score: N/A")
+
+        score_table = doc.add_table(rows=1, cols=2)
+        score_table.style = "Light Grid Accent 1"
+        hdr = score_table.rows[0].cells
+        hdr[0].text = "Category"
+        hdr[1].text = "Score"
+
+        for category, score in pitch_data["score"]["categories"].items():
+            row_cells = score_table.add_row().cells
+            row_cells[0].text = category
+            row_cells[1].text = f"{score}/100" if score is not None else "N/A"
+    else:
+        doc.add_paragraph("Score data unavailable.")
+
+    doc.add_paragraph()
+
+    # --- Key Metrics ---
+    doc.add_heading("Key Financial Metrics", level=2)
+    if pitch_data["metrics"]:
+        metrics_table = doc.add_table(rows=1, cols=2)
+        metrics_table.style = "Light Grid Accent 1"
+        hdr = metrics_table.rows[0].cells
+        hdr[0].text = "Metric"
+        hdr[1].text = "Value"
+
+        percent_metrics = {"Gross Margin", "Operating Margin", "Net Margin", "ROE", "ROA", "Revenue Growth (YoY)", "Earnings Growth (YoY)"}
+
+        for group_name in ["valuation", "profitability", "growth", "financial_health"]:
+            group = pitch_data["metrics"].get(group_name, {})
+            for label, value in group.items():
+                if value is None:
+                    display_val = "N/A"
+                elif label in percent_metrics:
+                    display_val = f"{value*100:.2f}%"
+                else:
+                    display_val = f"{value:.2f}"
+                row_cells = metrics_table.add_row().cells
+                row_cells[0].text = label
+                row_cells[1].text = display_val
+    else:
+        doc.add_paragraph("Metrics unavailable.")
+
+    doc.add_paragraph()
+
+    # --- Risks ---
+    doc.add_heading("Risks", level=2)
+    for risk in pitch_data["risks"]:
+        doc.add_paragraph(risk, style="List Bullet")
+
+    doc.add_paragraph()
+
+    # --- Catalysts ---
+    doc.add_heading("Catalysts", level=2)
+    for catalyst in pitch_data["catalysts"]:
+        doc.add_paragraph(catalyst, style="List Bullet")
+
+    doc.add_paragraph()
+
+    # --- Comparable Company Analysis ---
+    if pitch_data["comps"]:
+        doc.add_heading("Comparable Company Analysis", level=2)
+        comps_table = doc.add_table(rows=1, cols=3)
+        comps_table.style = "Light Grid Accent 1"
+        hdr = comps_table.rows[0].cells
+        hdr[0].text = "Method"
+        hdr[1].text = "Peer Median Multiple"
+        hdr[2].text = "Implied Price"
+
+        for method_name, method_data in pitch_data["comps"]["methods"].items():
+            row_cells = comps_table.add_row().cells
+            row_cells[0].text = method_name
+            row_cells[1].text = f"{method_data['peer_median_multiple']}x"
+            row_cells[2].text = f"${method_data['implied_price']:.2f}"
+
+        doc.add_paragraph()
+
+    # --- Business Summary ---
+    doc.add_heading("Business Summary", level=2)
+    doc.add_paragraph(pitch_data["business_summary"])
+
+    # --- Save to in-memory buffer ---
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
