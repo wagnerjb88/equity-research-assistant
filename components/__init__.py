@@ -357,3 +357,55 @@ def display_football_field(comps_result, current_price):
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
+def display_dcf_valuation(dcf_result):
+    """
+    Displays DCF valuation results: key outputs, assumptions used, and year-by-year projection.
+    """
+    if dcf_result is None:
+        st.warning("Unable to calculate DCF — missing free cash flow or share data for this company.")
+        return
+
+    current_price = dcf_result["current_price"]
+    implied_price = dcf_result["implied_price"]
+    upside = dcf_result["upside_pct"]
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Current Price", f"${current_price:.2f}" if current_price else "N/A")
+    with col2:
+        st.metric("DCF Implied Price", f"${implied_price:.2f}")
+    with col3:
+        if upside is not None:
+            st.metric("Upside/Downside", f"{upside:+.1f}%")
+
+    st.divider()
+
+    st.write("**Assumptions Used**")
+    a = dcf_result["assumptions"]
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.write(f"Growth Rate: **{a['growth_rate']}%**")
+    with col2:
+        st.write(f"Discount Rate: **{a['discount_rate']}%**")
+    with col3:
+        st.write(f"Terminal Growth: **{a['terminal_growth']}%**")
+    with col4:
+        st.write(f"Projection Years: **{a['projection_years']}**")
+
+    st.divider()
+
+    st.write("**Projected Free Cash Flow**")
+    years = [f"Year {i+1}" for i in range(len(dcf_result["projected_fcf"]))]
+    projection_df = pd.DataFrame({
+        "Projected FCF": dcf_result["projected_fcf"],
+        "Discounted FCF (PV)": dcf_result["discounted_fcf"],
+    }, index=years)
+    projection_df = projection_df.map(lambda x: f"${x:,.0f}")
+    st.dataframe(projection_df, use_container_width=True)
+
+    st.write("**Valuation Bridge**")
+    st.write(f"- Sum of Discounted FCF: **${sum(dcf_result['discounted_fcf']):,.0f}**")
+    st.write(f"- Discounted Terminal Value: **${dcf_result['discounted_terminal_value']:,.0f}**")
+    st.write(f"- Enterprise Value: **${dcf_result['enterprise_value']:,.0f}**")
+    st.write(f"- Equity Value: **${dcf_result['equity_value']:,.0f}**")

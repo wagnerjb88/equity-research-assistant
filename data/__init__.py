@@ -554,3 +554,91 @@ def calculate_comps_valuation(info, comparison_data):
         "current_price": current_price,
         "average_upside_pct": round((avg_implied_price - current_price) / current_price * 100, 1) if current_price else None
     }
+def calculate_dcf(info, stock, growth_rate=None, discount_rate=None, terminal_growth=None, projection_years=5):
+    """
+    Calculates intrinsic value per share using a Discounted Cash Flow model.
+    If growth_rate/discount_rate/terminal_growth are not provided, reasonable
+    defaults are derived from the company's own data.
+    """
+    shares_outstanding = info.get("sharesOutstanding")
+    total_debt = info.get("totalDebt") or 0
+    cash = info.get("totalCash") or 0
+    beta = info.get("beta") or 1.0
+    current_price = info.get("currentPrice")
+
+    # --- Get starting Free Cash Flow ---
+    try:
+        cash_flow = stock.cashflow
+        if not cash_flow.empty and "Free Cash Flow" in cash_flow.index:
+            starting_fcf = cash_flow.loc["Free Cash Flow"].iloc[0]
+        else:
+            op_cf = cash_flow.loc["Operating Cash Flow"].iloc[0] if "Operating Cash Flow" in cash_flow.index else None
+            capex = cash_flow.loc["Capital Expenditure"].iloc[0] if "Capital Expenditure" in cash_flow.index else None
+            starting_fcf = (op_cf + capex) if (op_cf is not None and capex is not None) else None
+    except Exception:
+        starting_fcf = None
+
+    if starting_fcf is None or starting_fcf <= 0 or shares_outstanding is None:
+        return None
+
+    # --- Auto-calculate default assumptions if not provided ---
+    if growth_rate is None:
+        rev_growth = info.get("revenueGrowth")
+        # Use historical revenue growth as a proxy, capped to a sane range
+        growth_rate = rev_growth if rev_growth is not None else 0.08
+        growth_rate = max(min(growth_rate, 0.25), -0.05)  # cap between -5% and 25%
+
+    if discount_rate is None:
+        # Simplified CAPM: risk-free rate + beta * equity risk premium
+        risk_free_rate = 0.04
+        equity_risk_premium = 0.05
+        discount_rate = risk_free_rate + beta * equity_risk_premium
+        discount_rate = max(min(discount_rate, 0.15), 0.06)  # cap between 6% and 15%
+
+    if terminal_growth is None:
+        terminal_growth = 0.025  # long-run GDP-like growth
+
+    # --- Project future FCF ---
+    projected_fcf = []
+    fcf = starting_fcf
+    for year in range(1, projection_years + 1):
+        fcf = fcf * (1 + growth_rate)
+        projected_fcf.append(fcf)
+
+    # --- Discount each year's FCF back to present value ---
+    discounted_fcf = [
+        fcf / ((1 + discount_rate) ** year)
+        for year, fcf in enumerate(projected_fcf, start=1)
+    ]
+
+    # --- Terminal value (Gordon Growth Model), discounted back to present ---
+    terminal_value = (projected_fcf[-1] * (1 + terminal_growth)) / (discount_rate - terminal_growth)
+    discounted_terminal_value = terminal_value / ((1 + discount_rate) ** projection_years)
+
+    # --- Enterprise Value = sum of discounted FCF + discounted terminal value ---
+    enterprise_value = sum(discounted_fcf) + discounted_terminal_value
+
+    # --- Bridge to equity value and per-share price ---
+    equity_value = enterprise_value - total_debt + cash
+    implied_price = equity_value / shares_outstanding
+
+    upside_pct = round((implied_price - current_price) / current_price * 100, 1) if current_price else None
+
+    return {
+        "assumptions": {
+            "growth_rate": round(growth_rate * 100, 2),
+            "discount_rate": round(discount_rate * 100, 2),
+            "terminal_growth": round(terminal_growth * 100, 2),
+            "projection_years": projection_years,
+        },
+        "starting_fcf": round(starting_fcf, 0),
+        "projected_fcf": [round(f, 0) for f in projected_fcf],
+        "discounted_fcf": [round(f, 0) for f in discounted_fcf],
+        "terminal_value": round(terminal_value, 0),
+        "discounted_terminal_value": round(discounted_terminal_value, 0),
+        "enterprise_value": round(enterprise_value, 0),
+        "equity_value": round(equity_value, 0),
+        "implied_price": round(implied_price, 2),
+        "current_price": current_price,
+        "upside_pct": upside_pct,
+    }
