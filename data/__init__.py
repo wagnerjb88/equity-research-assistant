@@ -1299,3 +1299,40 @@ def calculate_dcf_sensitivity(info, stock, growth_rate, discount_rate_center, te
         "discount_rates": discount_rates,
         "terminal_growth_rates": terminal_growth_rates,
     }
+
+def run_screener(tickers):
+    """
+    Runs a lightweight scan across multiple tickers: fetches core data and
+    calculates a score for each, without pulling full financial statements
+    (keeps it fast for scanning many companies at once).
+    Returns a list of dicts, one per successfully-scanned company.
+    """
+    results = []
+
+    for ticker in tickers:
+        try:
+            stock, info = get_stock_data(ticker)
+            if stock is None:
+                continue
+
+            metrics = get_key_metrics(info, stock)
+            sector = info.get("sector")
+            score_result = calculate_score(metrics, comparison_data=None, base_ticker=ticker, sector=sector)
+
+            results.append({
+                "Ticker": ticker,
+                "Company": info.get("longName") or info.get("shortName") or ticker,
+                "Sector": sector or "N/A",
+                "Price": info.get("currentPrice"),
+                "Overall Score": score_result["overall"],
+                "Valuation": score_result["categories"]["Valuation"],
+                "Profitability": score_result["categories"]["Profitability"],
+                "Growth": score_result["categories"]["Growth"],
+                "Financial Health": score_result["categories"]["Financial Health"],
+                "P/E (TTM)": metrics["valuation"]["P/E (TTM)"],
+                "Revenue Growth": metrics["growth"]["Revenue Growth (YoY)"],
+            })
+        except Exception:
+            continue
+
+    return results

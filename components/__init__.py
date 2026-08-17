@@ -538,3 +538,26 @@ def display_dcf_sensitivity(sensitivity_result):
 
     st.dataframe(sensitivity_df, use_container_width=True)
     st.caption("Implied share price across a range of discount rate and terminal growth assumptions. Center column/row approximates your current slider settings.")
+def display_screener_results(results):
+    """
+    Displays screener results as a sortable table, ranked by overall score.
+    """
+    if not results:
+        st.warning("No valid results. Check that your tickers are correct.")
+        return
+
+    df = pd.DataFrame(results)
+    df = df.sort_values("Overall Score", ascending=False, na_position="last")
+    df = df.set_index("Ticker")
+
+    # Format for display
+    df["Price"] = df["Price"].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "N/A")
+    df["P/E (TTM)"] = df["P/E (TTM)"].apply(lambda x: f"{x:.1f}" if pd.notna(x) else "N/A")
+    df["Revenue Growth"] = df["Revenue Growth"].apply(lambda x: f"{x*100:.1f}%" if pd.notna(x) else "N/A")
+
+    for col in ["Overall Score", "Valuation", "Profitability", "Growth", "Financial Health"]:
+        df[col] = df[col].apply(lambda x: f"{x:.0f}" if pd.notna(x) else "N/A")
+
+    st.dataframe(df, use_container_width=True)
+    st.caption(f"Ranked by Overall Score, highest to lowest. {len(results)} companies scanned successfully.")
+    
