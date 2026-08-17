@@ -1261,3 +1261,41 @@ def get_company_news(stock, limit=6):
         })
 
     return articles
+
+def calculate_dcf_sensitivity(info, stock, growth_rate, discount_rate_center, terminal_growth_center, projection_years=5):
+    """
+    Builds a sensitivity table showing DCF-implied price across a range of
+    discount rates and terminal growth rates, holding the growth rate constant.
+    Returns a dict: {discount_rate: {terminal_growth: implied_price}}.
+    """
+    # Build a range of 5 discount rates and 5 terminal growth rates centered on the base case
+    discount_rates = [round(discount_rate_center + step * 0.01, 4) for step in [-2, -1, 0, 1, 2]]
+    terminal_growth_rates = [round(terminal_growth_center + step * 0.005, 4) for step in [-2, -1, 0, 1, 2]]
+
+    # Filter out any invalid combinations (terminal growth must be less than discount rate)
+    discount_rates = [d for d in discount_rates if d > 0.01]
+    terminal_growth_rates = [t for t in terminal_growth_rates if t >= 0]
+
+    sensitivity_grid = {}
+
+    for d_rate in discount_rates:
+        row = {}
+        for t_growth in terminal_growth_rates:
+            if t_growth >= d_rate:
+                row[t_growth] = None  # Invalid: terminal growth can't exceed discount rate
+                continue
+            result = calculate_dcf(
+                info, stock,
+                growth_rate=growth_rate,
+                discount_rate=d_rate,
+                terminal_growth=t_growth,
+                projection_years=projection_years,
+            )
+            row[t_growth] = result["implied_price"] if result else None
+        sensitivity_grid[d_rate] = row
+
+    return {
+        "grid": sensitivity_grid,
+        "discount_rates": discount_rates,
+        "terminal_growth_rates": terminal_growth_rates,
+    }

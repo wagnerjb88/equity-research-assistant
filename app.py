@@ -1,8 +1,8 @@
 import streamlit as st
 
 from config.settings import APP_NAME, APP_ICON, LAYOUT, DEFAULT_TICKER
-from data import get_stock_data, get_price_history, get_financial_statements, get_key_metrics, get_comparison_data, calculate_score, generate_score_explanation, calculate_comps_valuation, calculate_dcf, generate_dcf_excel, generate_investment_thesis, assemble_pitch_data, generate_pitch_docx, get_company_news
-from components import display_company_overview, display_price_chart, display_financial_statements, display_key_metrics, display_comparison_table, display_score, display_comps_valuation, display_dcf_valuation, display_investment_thesis, display_full_pitch, display_news
+from data import get_stock_data, get_price_history, get_financial_statements, get_key_metrics, get_comparison_data, calculate_score, generate_score_explanation, calculate_comps_valuation, calculate_dcf, generate_dcf_excel, generate_investment_thesis, assemble_pitch_data, generate_pitch_docx, get_company_news, calculate_dcf_sensitivity
+from components import display_company_overview, display_price_chart, display_financial_statements, display_key_metrics, display_comparison_table, display_score, display_comps_valuation, display_dcf_valuation, display_investment_thesis, display_full_pitch, display_news, display_dcf_sensitivity
 st.set_page_config(
     page_title=APP_NAME,
     page_icon=APP_ICON,
@@ -166,7 +166,18 @@ if ticker_input:
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         key="dcf_excel_download"
                     )
-            st.divider()
+
+                st.divider()
+
+                # --- DCF Sensitivity Table ---
+                st.write("**Sensitivity Analysis**")
+                sensitivity_result = calculate_dcf_sensitivity(
+                    info, stock,
+                    growth_rate=growth_rate_input / 100,
+                    discount_rate_center=discount_rate_input / 100,
+                    terminal_growth_center=terminal_growth_input / 100,
+                )
+                display_dcf_sensitivity(sensitivity_result)
 
            # --- Company Score ---
             st.subheader("Company Score")

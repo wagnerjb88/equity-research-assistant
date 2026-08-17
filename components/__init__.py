@@ -513,3 +513,28 @@ def display_news(news_articles):
     for article in news_articles:
         st.write(f"**[{article['title']}]({article['link']})**")
         st.caption(f"{article['publisher']} • {article['published']}")
+
+def display_dcf_sensitivity(sensitivity_result):
+    """
+    Displays the DCF sensitivity grid as a styled table: rows = discount rates,
+    columns = terminal growth rates, cells = implied price.
+    """
+    grid = sensitivity_result["grid"]
+    discount_rates = sensitivity_result["discount_rates"]
+    terminal_growth_rates = sensitivity_result["terminal_growth_rates"]
+
+    # Build a DataFrame: rows = discount rate, columns = terminal growth rate
+    table_data = {}
+    for t_growth in terminal_growth_rates:
+        col_label = f"{t_growth*100:.1f}%"
+        table_data[col_label] = [
+            f"${grid[d_rate][t_growth]:.2f}" if grid[d_rate][t_growth] is not None else "—"
+            for d_rate in discount_rates
+        ]
+
+    row_labels = [f"{d_rate*100:.1f}%" for d_rate in discount_rates]
+    sensitivity_df = pd.DataFrame(table_data, index=row_labels)
+    sensitivity_df.index.name = "Discount Rate ↓ / Terminal Growth →"
+
+    st.dataframe(sensitivity_df, use_container_width=True)
+    st.caption("Implied share price across a range of discount rate and terminal growth assumptions. Center column/row approximates your current slider settings.")
