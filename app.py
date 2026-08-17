@@ -1,8 +1,8 @@
 import streamlit as st
 
 from config.settings import APP_NAME, APP_ICON, LAYOUT, DEFAULT_TICKER
-from data import get_stock_data, get_price_history, get_financial_statements, get_key_metrics, get_comparison_data, calculate_score, generate_score_explanation, calculate_comps_valuation, calculate_dcf, generate_dcf_excel, generate_investment_thesis, assemble_pitch_data, generate_pitch_docx, get_company_news, calculate_dcf_sensitivity, run_screener
-from components import display_company_overview, display_price_chart, display_financial_statements, display_key_metrics, display_comparison_table, display_score, display_comps_valuation, display_dcf_valuation, display_investment_thesis, display_full_pitch, display_news, display_dcf_sensitivity, display_screener_results
+from data import get_stock_data, get_price_history, get_financial_statements, get_key_metrics, get_comparison_data, calculate_score, generate_score_explanation, calculate_comps_valuation, calculate_dcf, generate_dcf_excel, generate_investment_thesis, assemble_pitch_data, generate_pitch_docx, get_company_news, calculate_dcf_sensitivity, run_screener, generate_ai_analysis
+from components import display_company_overview, display_price_chart, display_financial_statements, display_key_metrics, display_comparison_table, display_score, display_comps_valuation, display_dcf_valuation, display_investment_thesis, display_full_pitch, display_news, display_dcf_sensitivity, display_screener_results, display_ai_analysis
 st.set_page_config(
     page_title=APP_NAME,
     page_icon=APP_ICON,
@@ -82,6 +82,17 @@ if ticker_input:
             st.subheader("Key Metrics")
             metrics = get_key_metrics(info, stock)
             display_key_metrics(metrics)
+
+            st.divider()
+
+            # --- AI Qualitative Analysis ---
+            st.subheader("🤖 AI Qualitative Analysis")
+            if st.button("Generate AI Analysis", key="ai_analysis_button"):
+                with st.spinner("Analyzing competitive position, risks, and recent news..."):
+                    ai_analysis = generate_ai_analysis(info, metrics, news_articles, ticker_input)
+                display_ai_analysis(ai_analysis)
+            else:
+                st.caption("Click the button above to generate an AI-powered qualitative analysis (uses API credits).")
 
             st.divider()
 

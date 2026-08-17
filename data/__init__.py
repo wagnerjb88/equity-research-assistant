@@ -6,6 +6,12 @@ from openpyxl.utils import get_column_letter
 from io import BytesIO
 from docx import Document
 from docx.shared import Pt, RGBColor
+import anthropic
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 def get_stock_data(ticker):
     """
@@ -1336,3 +1342,60 @@ def run_screener(tickers):
             continue
 
     return results
+
+def generate_ai_analysis(info, metrics, news_articles, ticker):
+    """
+    Uses Claude to generate a qualitative analysis: competitive advantages,
+    business risks, and moat characteristics — based on the company's
+    business description, key metrics, and recent news.
+    Returns a plain-text analysis string, or an error message if the call fails.
+    """
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return "AI analysis unavailable — no API key configured."
+
+    client = anthropic.Anthropic(api_key=api_key)
+
+    company_name = info.get("longName") or info.get("shortName") or ticker
+    business_summary = info.get("longBusinessSummary", "No description available.")
+    sector = info.get("sector", "N/A")
+    industry = info.get("industry", "N/A")
+
+    prof = metrics.get("profitability", {})
+    growth = metrics.get("growth", {})
+    net_margin = prof.get("Net Margin")
+    rev_growth = growth.get("Revenue Growth (YoY)")
+
+    metrics_summary = []
+    if net_margin is not None:
+        metrics_summary.append(f"Net margin: {net_margin*100:.1f}%")
+    if rev_growth is not None:
+        metrics_summary.append(f"Revenue growth YoY: {rev_growth*100:.1f}%")
+    metrics_str = ", ".join(metrics_summary) if metrics_summary else "No metrics available"
+
+    news_headlines = "\n".join([f"- {a['title']}" for a in news_articles[:5]]) if news_articles else "No recent news available"
+
+    prompt = f"""You are an equity research analyst. Based on the information below, write a concise qualitative analysis (3-4 short paragraphs) covering:
+1. Competitive advantages / economic moat
+2. Key qualitative business risks (not covered by financial ratios)
+3. How recent news might affect the investment case
+
+Company: {company_name} ({ticker})
+Sector: {sector} | Industry: {industry}
+Business Description: {business_summary}
+Key Financial Metrics: {metrics_str}
+
+Recent News Headlines:
+{news_headlines}
+
+Write in a professional, analyst tone. Be specific to this company, not generic. Do not repeat the financial metrics back verbatim — focus on qualitative insight the numbers alone can't capture."""
+
+    try:
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.content[0].text
+    except Exception as e:
+        return f"AI analysis failed: {str(e)}"
