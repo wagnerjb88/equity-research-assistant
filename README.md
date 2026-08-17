@@ -50,6 +50,13 @@ Enter a ticker, and the app pulls live market data to generate a complete resear
 ---
 
 ## Screenshots
+<img width="2696" height="1438" alt="Screenshot 2026-08-17 143725" src="https://github.com/user-attachments/assets/07b9ed77-84bc-44cd-89a6-f83b0d467e16" />
+<img width="2671" height="1382" alt="Screenshot 2026-08-17 143746" src="https://github.com/user-attachments/assets/d8603fa8-7b4e-4a65-a69e-4803a05c7167" />
+<img width="2668" height="1090" alt="Screenshot 2026-08-17 143814" src="https://github.com/user-attachments/assets/e90fee1b-58bc-480c-aa2f-88bc1ac87aa9" />
+<img width="2609" height="1309" alt="Screenshot 2026-08-17 143941" src="https://github.com/user-attachments/assets/bc81770a-3cb2-46f9-9bf2-ec9639d6bb15" />
+
+
+
 
 
 ---
