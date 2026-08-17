@@ -1,5 +1,6 @@
 import yfinance as yf
 import pandas as pd
+import streamlit as st
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
@@ -13,16 +14,24 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def get_cached_info(ticker):
+    """
+    Fetches and caches the info dictionary for a ticker for 5 minutes,
+    reducing repeated calls to Yahoo Finance (helps avoid rate limiting).
+    """
+    stock = yf.Ticker(ticker)
+    return stock.info
+
+
 def get_stock_data(ticker):
     """
     Fetches a yfinance Ticker object and its info dictionary for a given ticker symbol.
     Returns (stock, info) or (None, None) if the ticker is invalid.
     """
     stock = yf.Ticker(ticker)
-    info = stock.info
+    info = get_cached_info(ticker)
 
-    # Some tickers populate longName, others only populate shortName.
-    # Fall back through a few fields before concluding the ticker is invalid.
     name = info.get("longName") or info.get("shortName") or info.get("symbol")
 
     if not info or name is None:
