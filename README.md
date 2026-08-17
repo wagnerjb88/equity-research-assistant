@@ -4,6 +4,7 @@ A full-stack equity research and valuation platform built to mirror how a hedge 
 
 Enter a ticker, and the app pulls live market data to generate a complete research package: financial statements, valuation models (DCF and comparable companies), a sector-aware scoring engine, AI-generated qualitative analysis, and an auto-generated investment memo — all exportable as Excel and Word documents.
 
+https://equity-research-assistant88.streamlit.app/
 
 ---
 
