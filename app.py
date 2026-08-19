@@ -13,7 +13,7 @@ st.title(f"{APP_ICON} {APP_NAME}")
 st.caption("AI-powered equity research, from ticker to investment pitch.")
 
 # --- Screener ---
-with st.expander("🔍 Screener — Scan Multiple Companies", expanded=False):
+with st.expander("Screener — Scan Multiple Companies", expanded=False):
     screener_input = st.text_input(
         "Enter tickers to scan, separated by commas",
         placeholder="e.g. AAPL, MSFT, GOOGL, AMZN, NVDA",
@@ -86,7 +86,7 @@ if ticker_input:
             st.divider()
 
             # --- AI Qualitative Analysis ---
-            st.subheader("🤖 AI Qualitative Analysis")
+            st.subheader("AI Qualitative Analysis")
             if st.button("Generate AI Analysis", key="ai_analysis_button"):
                 with st.spinner("Analyzing competitive position, risks, and recent news..."):
                     ai_analysis = generate_ai_analysis(info, metrics, news_articles, ticker_input)
@@ -189,7 +189,7 @@ if ticker_input:
                 if dcf_result is not None:
                     excel_buffer = generate_dcf_excel(info, dcf_result, ticker_input)
                     st.download_button(
-                        label="📥 Download DCF Model (Excel)",
+                        label="Download DCF Model (Excel)",
                         data=excel_buffer,
                         file_name=f"{ticker_input}_DCF_Model.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -225,7 +225,7 @@ if ticker_input:
             st.divider()
 
             # --- Full Investment Memo ---
-            st.subheader("📄 Full Investment Memo")
+            st.subheader("Full Investment Memo")
             with st.expander("View Full Memo", expanded=False):
                 pitch_data = assemble_pitch_data(info, metrics, score_result, dcf_result, comps_result, thesis_result, news_articles, ticker_input)
                 display_full_pitch(pitch_data)
@@ -234,7 +234,7 @@ if ticker_input:
 
                 docx_buffer = generate_pitch_docx(pitch_data)
                 st.download_button(
-                    label="📥 Download Investment Memo (Word)",
+                    label="Download Investment Memo (Word)",
                     data=docx_buffer,
                     file_name=f"{ticker_input}_Investment_Memo.docx",
                     mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
