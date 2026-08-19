@@ -1,8 +1,8 @@
 #  AI-Powered Equity Research Assistant
 
-A full-stack equity research and valuation platform built to mirror how a hedge fund or private equity analyst evaluates a company — from raw financials to a downloadable investment memo.
+A full-stack equity research and valuation platform built to mirror how a hedge fund or private equity analyst evaluates a company from raw financials to a downloadable investment memo.
 
-Enter a ticker, and the app pulls live market data to generate a complete research package: financial statements, valuation models (DCF and comparable companies), a sector-aware scoring engine, AI-generated qualitative analysis, and an auto-generated investment memo — all exportable as Excel and Word documents.
+Enter a ticker, and the app pulls live market data to generate a complete research package: financial statements, valuation models (DCF and comparable companies), a sector-aware scoring engine, AI-generated qualitative analysis, and an auto-generated investment memo all exportable as Excel and Word documents.
 
 https://equity-research-assistant88.streamlit.app/
 
@@ -19,7 +19,7 @@ https://equity-research-assistant88.streamlit.app/
 - **DCF model** with CAPM-derived discount rate defaults, user-adjustable growth/discount/terminal growth assumptions, and a 5×5 sensitivity table
 
 - **Comparable company analysis** using peer-median P/E, EV/EBITDA, P/S, and P/B multiples, visualized as a football field chart
-- Downloadable Excel DCF model with live formulas — adjust assumptions directly in Excel and watch it recalculate
+- Downloadable Excel DCF model with live formulas and the ability to adjust assumptions directly in Excel and watch it recalculate
 
 **Analysis & Scoring**
 - Sector-aware composite scoring across Valuation, Profitability, Growth, and Financial Health
